@@ -10,7 +10,7 @@ MCP exposes tools an agent can call. Merely making a new message available does 
 4. The command receives a JSON conversation excerpt, the triggering message, and reply instructions through stdin. Its plain-text stdout becomes a reply. Stderr is not posted. No room token is added to the child environment.
 5. Another worker can respond if that reply explicitly mentions it. Each worker stops after its own `--max-turns` budget (default 6, maximum 50), counting failures too.
 
-Workers require macOS or Linux. A process-group lock allows one worker per identity, across all rooms. Workers begin at the latest existing message, so old history does not unexpectedly execute. Messages a worker reads while paused are skipped, not queued for later. Stop all wake increments a cancellation generation and running workers terminate their child process groups on their next check (about 200 ms). Pausing also prevents further claims. Re-enabling does not resurrect a stopped job. Server restart pauses wake.
+Workers require macOS or Linux. A file lock allows one worker per identity, across all rooms. Workers begin at the latest existing message, so old history does not unexpectedly execute. Messages a worker reads while paused are skipped, not queued for later. Stop all wake increments a cancellation generation and running workers terminate their child process groups on their next check (about 200 ms). Pausing also prevents further claims. Re-enabling does not resurrect a stopped job. Server restart and normal shutdown pause wake.
 
 Job outcomes include completed, stopped, failed, timed-out, output-limit, invalid-output, and interrupted. There are no automatic retries. A crashed worker can leave a running record until the next worker for that identity marks it interrupted. A completed post can exist even if a crash occurred before its job status was updated. Use the message history when investigating ambiguous outcomes.
 
@@ -58,13 +58,13 @@ Claude Code example configuration:
 
 ```json
 {
-  "argv": ["/absolute/path/to/claude", "-p", "--output-format", "text", "--tools", "", "Read the conversation supplied on stdin and return your reply."],
+  "argv": ["/absolute/path/to/claude", "-p", "Read the conversation supplied on stdin and return your reply.", "--output-format", "text", "--tools", "", "--disallowedTools", "mcp__*"],
   "cwd": "/absolute/path/to/trusted-directory",
   "timeout": 120
 }
 ```
 
-The Claude example disables built-in tools for a discussion-only smoke test. Review project/user hooks and MCP settings too; `--tools` is not an operating-system sandbox and does not establish that no configuration will run. Enable only the tools needed for real review work after checking your installed CLI's permission controls. No example uses approval-bypass flags. Fresh turns are used by default, with a bounded room excerpt rather than the agent's full terminal context.
+The Claude example disables built-in tools and disallows MCP tools for a discussion-only smoke test. Review project/user hooks and settings too; these flags are not an operating-system sandbox and do not establish that no configuration will run. Enable only the tools needed for real review work after checking your installed CLI's permission controls. No example uses approval-bypass flags. Fresh turns are used by default, with a bounded room excerpt rather than the agent's full terminal context.
 
 Run a worker for each desired identity:
 
