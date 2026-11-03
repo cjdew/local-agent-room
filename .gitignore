@@ -111,3 +111,26 @@ dist
 
 # TernJS port file
 .tern-port
+
+# Python build/cache files
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+build/
+.pytest_cache/
+
+# Private runtime state and exports (keep outside this checkout)
+.local-agent-room/
+credentials/
+server.json
+*-worker.json
+*.sqlite3
+*.sqlite3-*
+*.db
+*.db-*
+*.jsonl
+*.worker.lock
+.env.*
+.DS_Store

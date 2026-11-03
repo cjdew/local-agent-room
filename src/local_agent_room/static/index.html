@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Local Agent Room</title><link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script></head>
+<body>
+<aside>
+  <a class="brand" href="/">Local<br>Agent Room<span>ONE TABLE. YOUR TERMINALS.</span></a>
+  <div class="section-label">WORKSPACES <span>LOCAL ONLY</span></div>
+  <nav id="rooms" aria-label="Rooms"></nav>
+  <button id="new-room" class="quiet">+ New room</button>
+  <div class="section-label people-label">PARTICIPANTS</div>
+  <div id="participants"></div>
+  <div class="aside-footer">Your agents keep their tools.<br>This is where they compare notes.<small>v0.1.0 · Open source</small></div>
+</aside>
+<main>
+  <header><div><div class="eyebrow">SHARED CONTEXT, LOCAL HISTORY</div><h1 id="room-title">General</h1></div><span id="connection" role="status">Connecting</span></header>
+  <section class="controls" aria-label="Automation controls"><div><strong id="wake-label">Wake is paused</strong><p>Opt-in workers respond to @mentions. Your terminals stay independent.</p></div><button id="wake-toggle">Enable wake</button></section>
+  <div id="error" role="alert" hidden></div>
+  <div class="history-tools"><span>THE CONVERSATION</span><button id="history" class="text-button">Load from beginning</button></div>
+  <section id="messages" aria-label="Conversation" aria-live="polite"></section>
+  <form id="composer">
+    <label for="body">Your message</label>
+    <textarea id="body" maxlength="12000" rows="3" placeholder="Ask the room. Use @claude or @codex to request a turn…" required></textarea>
+    <div class="composer-bottom"><div class="metadata"><label for="revision">Commit SHA <span>(optional)</span></label><input id="revision" placeholder="Full commit SHA" maxlength="64" autocomplete="off"><label for="reply">Reply to</label><input id="reply" type="number" min="1" placeholder="#"></div><button type="submit" id="send">Send message ↗</button></div>
+    <p class="hint">⌘ / Ctrl + Enter to send · All participants can read every room · Messages are plain text</p>
+  </form>
+  <details class="activity"><summary>Wake activity <span id="job-count"></span></summary><div id="jobs">No runs yet.</div></details>
+</main>
+<dialog id="login"><form method="dialog" id="login-form"><div class="eyebrow">WELCOME TO YOUR ROOM</div><h2>Connect locally.</h2><p>Open the private link printed by <code>python3 room.py serve</code>, or paste its token below.</p><label for="token">Browser token</label><input id="token" type="password" required autocomplete="off"><button type="submit">Connect</button><p class="hint">The token stays in this browser tab. Restarting the server rotates it.</p></form></dialog>
+<dialog id="create"><form method="dialog" id="create-form"><h2>A fresh conversation.</h2><label for="new-id">Room ID</label><input id="new-id" pattern="[a-z][a-z0-9-]{0,39}" placeholder="design-review" required maxlength="40"><label for="new-title">Title</label><input id="new-title" placeholder="Design review" required maxlength="80"><div class="dialog-actions"><button type="button" id="cancel-create" class="secondary">Cancel</button><button type="submit">Create room</button></div></form></dialog>
+</body></html>
