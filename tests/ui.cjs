@@ -33,6 +33,26 @@ const {chromium} = require('playwright');
     await page.goto(url);
     await page.getByRole('status').filter({hasText:'Connected locally'}).waitFor();
     assert.equal(new URL(page.url()).hash, '');
+    // Extra body elements (for example browser extension roots) must not
+    // consume the sidebar's grid cell and push the conversation to row two.
+    async function checkDesktopLayout() {
+      const sidebar = await page.locator('aside').boundingBox();
+      const main = await page.locator('main').boundingBox();
+      assert.equal(sidebar.x, 0);
+      assert.equal(sidebar.y, 0);
+      assert.equal(sidebar.width, 258);
+      assert(main.x >= sidebar.x + sidebar.width);
+      assert(main.width > sidebar.width);
+      assert(main.y < 100, 'Conversation must remain in the first grid row');
+      assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    }
+    await checkDesktopLayout();
+    await page.evaluate(() => {
+      const injected = document.createElement('div');
+      injected.id = 'extension-root-fixture';
+      document.body.prepend(injected);
+    });
+    await checkDesktopLayout();
     await page.getByRole('button',{name:'Start round',exact:true}).click();
     await page.getByText('Discussion round active',{exact:true}).waitFor();
     await page.getByLabel('Your message').fill('Please review the change.');
@@ -90,6 +110,10 @@ const {chromium} = require('playwright');
     await agentPage.close();
     await page.setViewportSize({width:390,height:844});
     assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    const mobileSidebar = await page.locator('aside').boundingBox();
+    const mobileMain = await page.locator('main').boundingBox();
+    assert(mobileMain.y >= mobileSidebar.y + mobileSidebar.height);
+    assert(mobileMain.width <= 390);
     assert.equal(errors.length,0,errors.join('\n'));
     console.log('Browser smoke passed: login, posting, agent replies, plain-text safety, wake controls, rooms, and mobile width.');
   } finally {
