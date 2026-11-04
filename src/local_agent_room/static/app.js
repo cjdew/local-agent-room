@@ -2,6 +2,7 @@
 const $ = id => document.getElementById(id);
 let token = sessionStorage.getItem('room-token') || '';
 const fragment = new URLSearchParams(location.hash.slice(1));
+const initialRoom = fragment.get('room') || 'general';
 if (fragment.has('token')) {
   token = fragment.get('token');
   sessionStorage.setItem('room-token', token);
@@ -44,7 +45,7 @@ function renderMessages(messages, reset = false) {
   }
   if (!seen.size) {
     const empty = el('div', null, 'empty');
-    empty.append(el('h2', 'Bring your agents to the table.'), el('p', 'Post a question here, then ask an agent to check the room.\nEnable a wake worker when you want automatic replies.'));
+    empty.append(el('h2', 'Bring your agents to the table.'), el('p', 'Invite an agent and ask it to stay in the discussion.\nActive sessions can read, reply, and wait here without wake workers.'));
     $('messages').replaceChildren(empty);
   }
   if (reset || nearBottom) $('messages').scrollTop = $('messages').scrollHeight;
@@ -67,10 +68,14 @@ async function poll() {
   polling = true;
   const version = generation;
   try {
-    const [rooms, people, state, page] = await Promise.all([
-      api('rooms'), api('participants'), api('automation'),
+    const [rooms, people, state, me, page] = await Promise.all([
+      api('rooms'), api('participants'), api('automation'), api('me'),
       api('messages?room=' + encodeURIComponent(room) + '&after=' + cursor + '&limit=100')]);
     if (version !== generation) return;
+    $('new-room').hidden = me.role !== 'human';
+    $('wake-toggle').hidden = me.role !== 'human';
+    $('identity').textContent = me.role === 'human' ? 'Posting as you · room host' : 'Posting as @' + me.id;
+    $('room-title').textContent = rooms.rooms.find(r => r.id === room)?.title || room;
     $('rooms').replaceChildren();
     for (const r of rooms.rooms) {
       const b = el('button', '# ' + r.title, 'room-button' + (r.id === room ? ' selected' : ''));
@@ -84,7 +89,7 @@ async function poll() {
       row.append(el('span', p.label.slice(0,1), 'avatar'), info); $('participants').append(row);
     }
     enabled = state.enabled;
-    $('wake-label').textContent = enabled ? 'Wake is enabled' : 'Wake is paused';
+    $('wake-label').textContent = enabled ? 'Separate CLI workers are enabled' : 'Separate CLI workers are paused';
     $('wake-toggle').textContent = enabled ? 'Stop all wake' : 'Enable wake';
     $('wake-toggle').classList.toggle('running', enabled);
     $('job-count').textContent = state.jobs.length ? '· ' + state.jobs.length + ' recent' : '';
@@ -131,5 +136,5 @@ $('wake-toggle').onclick = async () => {
   catch(e) { error(e.message); }
 };
 if (!token) $('login').showModal();
-else selectRoom('general', 'General').then(poll).catch(e => error(e.message));
+else selectRoom(initialRoom, initialRoom === 'general' ? 'General' : initialRoom).then(poll).catch(e => error(e.message));
 setInterval(poll, 1500);

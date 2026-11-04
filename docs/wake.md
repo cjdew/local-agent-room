@@ -1,6 +1,6 @@
 # Optional wake workers
 
-MCP exposes tools an agent can call. Merely making a new message available does not force an idle CLI to take a turn. This project's optional worker supplies that missing execution loop.
+For existing active sessions, use the [live discussion workflow](live-discussion.md): agents can read, reply, and wait in the same turn without a worker. This page covers a different option: launching separate CLI turns after a mention. Merely making a new message available does not restart an agent whose turn has ended.
 
 ## Behavior
 

@@ -164,7 +164,7 @@ class HTTPTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         replies = [json.loads(line) for line in result.stdout.splitlines()]
         self.assertEqual(len(replies), 4)
-        self.assertEqual(len(replies[1]['result']['tools']), 4)
+        self.assertEqual(len(replies[1]['result']['tools']), 5)
         self.assertFalse(replies[2]['result']['isError'])
         data = json.loads(replies[3]['result']['content'][0]['text'])
         self.assertEqual(data['messages'][0]['author'], 'claude')
@@ -179,6 +179,83 @@ class HTTPTests(unittest.TestCase):
         self.assertEqual(replies[0]['error']['code'], -32700)
         self.assertEqual(replies[1]['error']['code'], -32600)
         self.assertTrue(replies[3]['result']['isError'])
+
+    def test_wait_delayed_delivery_timeout_and_cursor(self):
+        client = Client(self.credential)
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            waiting = pool.submit(client.wait, 'general', 0, 100, 3)
+            time.sleep(0.1)
+            self.assertFalse(waiting.done())
+            message = self.store.post('human', {'body':'Here is the next question', 'client_id':'wait-one'})['message']
+            page = waiting.result(timeout=4)
+        self.assertFalse(page['timed_out'])
+        self.assertEqual(page['messages'][0]['id'], message['id'])
+        start = time.monotonic()
+        empty = client.wait('general', page['next_cursor'], timeout=1)
+        self.assertTrue(empty['timed_out'])
+        self.assertEqual(empty['messages'], [])
+        self.assertEqual(empty['next_cursor'], message['id'])
+        self.assertGreaterEqual(time.monotonic() - start, 0.9)
+        self.assertEqual(self.request('/api/wait?timeout=51', token=self.token)[0], 400)
+
+    def test_wait_revocation_and_room_isolation(self):
+        self.store.create_room('other', 'Other')
+        client = Client(self.credential)
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            waiting = pool.submit(client.wait, 'general', 0, 100, 3)
+            self.store.post('human', {'room':'other','body':'Unrelated', 'client_id':'outside'})
+            time.sleep(0.3)
+            self.assertFalse(waiting.done())
+            self.store.revoke('claude')
+            with self.assertRaises(InputError):
+                waiting.result(timeout=2)
+
+    def test_invite_cli_matches_identity_and_revokes(self):
+        credentials = Path(self.temp.name) / 'credentials'
+        credentials.mkdir()
+        (credentials/'claude.json').write_bytes(self.credential.read_bytes())
+        self.store.create_room('review', 'Review')
+        command = [sys.executable,str(ROOT/'room.py'),'--data-dir',self.temp.name,'invite','claude','--room','review']
+        result = subprocess.run(command, capture_output=True, text=True, timeout=5)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(f'http://127.0.0.1:{self.server.server_port}/#token={self.token}&room=review', result.stdout)
+        self.store.revoke('claude')
+        revoked = subprocess.run(command, capture_output=True, text=True, timeout=5)
+        self.assertEqual(revoked.returncode, 1)
+        self.assertNotIn(self.token, revoked.stdout + revoked.stderr)
+
+    def test_two_live_mcp_connections_exchange_without_workers(self):
+        token = self.store.add_agent('codex','Codex')
+        codex = Path(self.temp.name)/'codex.json'
+        write_private(codex, {'server_config':str(Path(self.temp.name)/'server.json'), 'token':token})
+        def request(id_, name, arguments):
+            return {'jsonrpc':'2.0','id':id_,'method':'tools/call','params':{'name':name,'arguments':arguments}}
+        init = {'jsonrpc':'2.0','id':0,'method':'initialize','params':{'protocolVersion':'2025-11-25'}}
+        a = [init, request(1,'room_post',{'body':'@codex review this','client_id':'a1'}),
+             request(2,'room_wait',{'after':1,'timeout':5}),
+             request(3,'room_post',{'body':'@codex follow-up','client_id':'a2'}),
+             request(4,'room_wait',{'after':3,'timeout':5})]
+        b = [init, request(1,'room_wait',{'after':0,'timeout':5}),
+             request(2,'room_post',{'body':'@claude findings','client_id':'b1'}),
+             request(3,'room_wait',{'after':2,'timeout':5}),
+             request(4,'room_post',{'body':'@claude clarified','client_id':'b2'})]
+        def run(credential, requests):
+            return subprocess.run([sys.executable,str(ROOT/'room.py'),'mcp','--credential',str(credential)],
+                input='\n'.join(json.dumps(r) for r in requests)+'\n', capture_output=True,text=True,timeout=15)
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            futures = [pool.submit(run,self.credential,a),pool.submit(run,codex,b)]
+            for future in futures:
+                result = future.result(timeout=16)
+                self.assertEqual(result.returncode,0,result.stderr)
+                for reply in map(json.loads,result.stdout.splitlines()):
+                    self.assertNotIn('error',reply)
+                    self.assertFalse(reply['result'].get('isError',False))
+                    if 'content' in reply['result']:
+                        value = json.loads(reply['result']['content'][0]['text'])
+                        self.assertFalse(value.get('timed_out',False))
+        self.assertEqual([m['author'] for m in self.store.read('general')['messages']],['claude','codex','claude','codex'])
+        self.assertFalse(self.store.automation()['enabled'])
+        self.assertEqual(self.store.automation()['jobs'],[])
 
 
 @unittest.skipUnless(os.name == 'posix', 'Wake requires POSIX')

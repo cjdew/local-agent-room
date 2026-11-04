@@ -2,12 +2,13 @@
 
 A local web chat where you and your coding agents can compare notes. Keep Claude Code, Codex, and other MCP clients in their own terminals. Give each one access to the same conversation through a small stdio MCP bridge.
 
-**Status: v0.1.0 alpha.** Working local chat, MCP transport, and an opt-in command worker. Automated tests cover the protocol and two simulated agents exchanging replies. Real provider CLI sessions still need a smoke test on your machine; this project does not claim certified compatibility with every client.
+**Status: v0.2.0 alpha.** Working local chat, agent browser invites, and MCP tools for active sessions to read, reply, and wait. Automated tests exercise two continuing MCP connections exchanging messages with wake workers disabled. Real model sessions still need a smoke test on your machine; the application cannot force an agent runtime to keep its turn active.
 
 ## What it does
 
 - Shared rooms, persistent SQLite history, participant identities, replies, and optional full Git commit references.
-- Four MCP tools: `room_list`, `room_read`, `room_post`, and `room_participants`.
+- Five MCP tools: `room_list`, `room_read`, `room_wait`, `room_post`, and `room_participants`.
+- Private browser invites for agents that can operate a browser on the same machine.
 - A local browser UI with no CDN, telemetry, or external assets.
 - Optional `@agent` wake workers: run a locally configured command, pass context on stdin, and post its stdout as that agent's reply.
 - Human-controlled pause, per-worker turn budgets, timeouts, and durable job records.
@@ -37,6 +38,21 @@ python3 room.py --data-dir /absolute/path/to/private-state serve
 Use that same directory for `add-agent`, `wake`, `export`, and `revoke-agent`. Run one server per state directory. On Windows, use `py -3` if `python3` is unavailable.
 
 Optional package installation: `python3 -m pip install .` provides the `local-agent-room` command. This is not yet published to PyPI.
+
+## Discuss in your current agent sessions
+
+**No wake worker is needed while your agents remain active.** Give each agent a discussion task with a time/reply budget. It reads the room, responds, waits for the other participant, and repeats in the same turn. Browser agents can repeatedly observe the page; MCP agents can use `room_wait` to avoid repeated immediate reads.
+
+For agents with local browser access, start the server, then print one private link per identity:
+
+```sh
+python3 room.py invite claude
+python3 room.py invite codex
+```
+
+Give each agent its own link and ask it to stay in the discussion until an agreed deadline or stop message. Links authenticate the named agent directly; they are credentials, not public share links. The agent's browser must run on the machine hosting the room. A cloud browser's `127.0.0.1` does not point at your laptop.
+
+See [docs/live-discussion.md](docs/live-discussion.md) for the complete invite workflow, an initial instruction to give each agent, and the MCP equivalent. Existing terminal sessions retain their own context; the room shares only what they post.
 
 ## Connect your terminal agents
 
@@ -75,11 +91,11 @@ Then post a question in the browser and ask the other agent to read it. The serv
 
 For a reusable collaboration prompt and version discipline, see [docs/agent-workflow.md](docs/agent-workflow.md).
 
-## Automatic back-and-forth
+## Optional workers for separate CLI turns
 
-Yes: the optional worker can watch for `@codex`, invoke a configured local CLI, post its response, and wake `@claude` if that response requests Claude's turn. You can see the exchange and stop it from the chat.
+Active sessions can already exchange replies through a read/reply/wait loop. Separately, the optional worker can watch for `@codex`, invoke a configured local CLI, post its response, and trigger `@claude` if that response requests Claude's turn.
 
-**This launches separate command turns; it does not type into or wake an existing interactive terminal session.** The room provides shared context. Native session resumption and live terminal steering require provider-specific adapters and are not implemented in v0.1.0. Do not have a worker and an interactive process simultaneously write the same native session.
+**Workers launch separate command turns; they do not type into or wake an existing interactive terminal session.** They are not required for the active-session workflow. Native session resumption and live terminal steering require provider-specific adapters and are not implemented in v0.2.0. Do not have a worker and an interactive process simultaneously write the same native session.
 
 See [docs/wake.md](docs/wake.md) for a runnable, no-model smoke test and provider command examples. Wake is paused at server startup. Starting a worker alone does not enable execution.
 

@@ -99,6 +99,11 @@ class Handler(BaseHTTPRequestHandler):
                 data = {"participants": self.server.store.participants()}
             elif url.path == "/api/automation":
                 data = self.server.store.automation()
+            elif url.path == '/api/wait':
+                q = parse_qs(url.query)
+                data = self.server.store.wait(actor, q.get('room', ['general'])[0],
+                    int(q.get('after', ['0'])[0]), int(q.get('limit', ['100'])[0]),
+                    int(q.get('timeout', ['25'])[0]))
             elif url.path == "/api/messages":
                 q = parse_qs(url.query)
                 data = self.server.store.read(q.get("room", ["general"])[0],

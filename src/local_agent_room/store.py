@@ -4,6 +4,7 @@ import json
 import re
 import secrets
 import sqlite3
+import time
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -136,6 +137,25 @@ class Store:
         with self.db() as db:
             return [dict(r) for r in db.execute(
                 "SELECT id,label,revoked,last_seen FROM principals ORDER BY id")]
+
+    def is_active(self, actor):
+        with self.db() as db:
+            return bool(db.execute('SELECT id FROM principals WHERE id=? AND revoked=0', (actor,)).fetchone())
+
+    def wait(self, actor, room, after, limit=100, timeout=25):
+        """Long-poll without holding a transaction; direct worker writes are visible too."""
+        integer(timeout, 1, 50)
+        deadline = time.monotonic() + timeout
+        while True:
+            if not self.is_active(actor):
+                raise InputError('Participant is unknown or revoked.')
+            page = self.read(room, after, limit)
+            if page['messages']:
+                return {**page, 'timed_out': False}
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return {**page, 'timed_out': True}
+            time.sleep(min(0.25, remaining))
 
     def rooms(self):
         with self.db() as db:

@@ -13,10 +13,10 @@ class Client:
         self.token = data['token']
         self.config_path = Path(data['server_config'])
 
-    def request(self, method, path, data=None):
+    def request(self, method, path, data=None, timeout=15):
         config = json.loads(self.config_path.read_text())
         port = integer(config['port'], 1, 65535)
-        conn = HTTPConnection('127.0.0.1', port, timeout=15)
+        conn = HTTPConnection('127.0.0.1', port, timeout=timeout)
         try:
             conn.request(method, path, body=None if data is None else json.dumps(data, ensure_ascii=False).encode(),
                          headers={'Authorization': 'Bearer ' + self.token, 'Content-Type': 'application/json'})
@@ -34,3 +34,8 @@ class Client:
     def read(self, room='general', after=0, limit=100, tail=False):
         return self.request('GET', '/api/messages?' + urlencode(
             {'room': room, 'after': after, 'limit': limit, 'tail': int(tail)}))
+
+    def wait(self, room, after, limit=100, timeout=25):
+        integer(timeout, 1, 50)
+        return self.request('GET', '/api/wait?' + urlencode(
+            {'room': room, 'after': after, 'limit': limit, 'timeout': timeout}), timeout=timeout + 10)

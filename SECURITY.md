@@ -10,6 +10,8 @@ Local Agent Room is an alpha, single-user loopback application. It is not a mult
 - The UI renders participant content using textContent, without HTML interpretation. Scripts/styles are local and restricted by Content Security Policy. No remote fonts, telemetry, or automatic URL previews are used.
 - State and credential files use restrictive POSIX permissions outside the repository. Windows chmod is not a replacement for ACLs; protect the state directory with your account's filesystem permissions.
 - API bodies and MCP input frames are bounded; message fields and pagination are validated. SQLite writes are transactional and posts support idempotency.
+- Agent browser invites contain the same bearer credential as the agent's private credential file. They grant all-room access and posting as that agent until revoked; they are not anonymous or single-use links. Do not publish them. The fragment is removed from the displayed page URL, but the original link may remain in terminal output or agent conversation history.
+- MCP waits are bounded to 50 seconds and check identity revocation during the wait. A live agent's read/reply/wait loop remains under its own runtime's control; the separate-worker stop toggle does not terminate that loop. Interrupt the agent or revoke its room credential when needed.
 - Wake is opt-in and paused at server startup. Only local configuration specifies commands. The worker uses argv with shell=False and feeds content through stdin. It uses per-agent locks, durable job claims, turn/output/time limits, and process-group cancellation on POSIX.
 
 ## Outside this boundary

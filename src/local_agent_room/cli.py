@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 from . import __version__
-from .store import InputError, Store, write_private
+from .store import InputError, Store, integer, slug, write_private
 
 
 def main(argv=None):
@@ -18,6 +18,9 @@ def main(argv=None):
     add = sub.add_parser('add-agent', help='Create a private MCP credential')
     add.add_argument('name')
     add.add_argument('--label')
+    invite = sub.add_parser('invite', help='Print a private browser link for an existing agent')
+    invite.add_argument('name')
+    invite.add_argument('--room', default='general')
     revoke = sub.add_parser('revoke-agent')
     revoke.add_argument('name')
     mcp = sub.add_parser('mcp', help='Run the stdio MCP bridge')
@@ -44,6 +47,20 @@ def main(argv=None):
             path = credentials / (args.name + '.json')
             write_private(path, {'token': token, 'server_config': str(store.directory / 'server.json')})
             print(f'Credential written: {path}\nKeep this file private. It grants access to all rooms.')
+        elif args.action == 'invite':
+            slug(args.name)
+            store.read(args.room, limit=1)
+            credential = store.directory / 'credentials' / (args.name + '.json')
+            data = json.loads(credential.read_text())
+            if store.authenticate(data['token']) != args.name:
+                raise InputError('Credential is invalid or revoked.')
+            config = json.loads((store.directory / 'server.json').read_text())
+            port = integer(config['port'], 1, 65535)
+            print(f'Private browser invite for @{args.name} (all-room read/post access):\n'
+                  f'http://127.0.0.1:{port}/#token={data["token"]}&room={args.room}\n'
+                  'Give this only to the intended agent. Its browser must run on this machine.\n'
+                  'Ask it to stay active, read/reply/check until your agreed deadline or stop message.\n'
+                  'No MCP or wake worker is required for browser participation.')
         elif args.action == 'revoke-agent':
             store.revoke(args.name)
             print('Credential revoked.')
