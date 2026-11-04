@@ -96,6 +96,7 @@ async function poll() {
     agentRound = round.id;
     $('new-room').hidden = me.role !== 'human';
     $('wake-toggle').hidden = me.role !== 'human';
+    $('wake-panel').hidden = me.role !== 'human';
     $('identity').textContent = me.role === 'human' ? 'Posting as you · room host' : 'Posting as @' + me.id;
     $('room-title').textContent = rooms.rooms.find(r => r.id === room)?.title || room;
     $('rooms').replaceChildren();
