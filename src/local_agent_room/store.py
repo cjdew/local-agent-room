@@ -8,6 +8,7 @@ import time
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
+from .rounds import Rounds, SCHEMA, BODY, STOP, acknowledgment
 
 SLUG = re.compile(r"^[a-z][a-z0-9-]{0,39}$")
 MAX_BODY = 12000
@@ -46,7 +47,7 @@ def write_private(path, data):
         temp.unlink(missing_ok=True)
 
 
-class Store:
+class Store(Rounds):
     def __init__(self, directory):
         self.directory = Path(directory).expanduser().resolve()
         self.directory.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -87,6 +88,7 @@ class Store:
             """)
             db.execute("INSERT OR IGNORE INTO principals(id,label) VALUES('human','You')")
             db.execute("INSERT OR IGNORE INTO rooms VALUES('general','General',?)", (now(),))
+            db.executescript(SCHEMA)
         self.path.chmod(0o600)
 
     @contextmanager
@@ -146,10 +148,18 @@ class Store:
         """Long-poll without holding a transaction; direct worker writes are visible too."""
         integer(timeout, 1, 50)
         deadline = time.monotonic() + timeout
+        first = True
+        round_id = None
         while True:
             if not self.is_active(actor):
                 raise InputError('Participant is unknown or revoked.')
-            page = self.read(room, after, limit)
+            page = self.read(room, after, limit) if actor == 'human' else self.agent_read(
+                actor, room, after, limit, charge=first, expected_round=round_id)
+            if first and actor != 'human':
+                round_id = page['round']['id']
+            first = False
+            if page.get('round_ended'):
+                return {**page, 'timed_out': False}
             if page['messages']:
                 return {**page, 'timed_out': False}
             remaining = deadline - time.monotonic()
@@ -214,6 +224,14 @@ class Store:
             integer(reply, 1)
         body = body.strip()
         revision = revision.lower()
+        if author != 'human':
+            state = self.charge_post(author, room, client_id)
+            if not state['active']:
+                raise InputError(state['reason'] + ': ' + STOP)
+            if len(body) > BODY:
+                raise InputError(f'Agent messages are limited to {BODY} characters.')
+            if acknowledgment(body):
+                raise InputError('Post a substantive response; acknowledgment-only messages are blocked.')
         with self.db() as db:
             db.execute("BEGIN IMMEDIATE")
             if not db.execute('SELECT id FROM principals WHERE id=? AND revoked=0', (author,)).fetchone():
@@ -223,12 +241,20 @@ class Store:
                 raise InputError("Reply must reference a message in this room.")
             old = db.execute("SELECT * FROM messages WHERE author=? AND client_id=?", (author, client_id)).fetchone()
             if old:
-                if any(old[k] != v for k, v in {"room":room, "body":body, "revision":revision, "reply_to":reply}.items()):
+                if any(old[k] != v for k, v in {"room":room, "body":body, "revision":revision}.items()) or (reply is not None and old['reply_to'] != reply):
                     raise InputError("client_id was already used for a different message.")
                 return {"message": dict(old), "duplicate": True}
+            if author != 'human':
+                reply = self._turn(db, author, room, client_id, reply)
             cursor = db.execute("""INSERT INTO messages(room,author,body,revision,reply_to,client_id,created_at)
                 VALUES(?,?,?,?,?,?,?)""", (room, author, body, revision, reply, client_id, now()))
             row = db.execute("SELECT * FROM messages WHERE id=?", (cursor.lastrowid,)).fetchone()
+            if author != 'human':
+                db.execute("UPDATE round_turns SET status='posted' WHERE agent=? AND key=?", (author,client_id))
+            # Expire first: a late human message must not silently restart an idle round.
+            active_round = self._round(db,room)
+            if active_round and active_round['status'] in {'active','reply_limit'} and not acknowledgment(body):
+                db.execute('UPDATE rounds SET activity=? WHERE id=?',(time.time(),active_round['id']))
         return {"message": dict(row), "duplicate": False}
 
     def automation(self, enabled=None):
@@ -249,6 +275,15 @@ class Store:
                 return False
             if not db.execute('SELECT id FROM principals WHERE id=? AND revoked=0', (agent,)).fetchone():
                 return False
+            message = db.execute('SELECT room,author,body FROM messages WHERE id=?',(message_id,)).fetchone()
+            if not message or message['author']==agent or acknowledgment(message['body']):
+                return False
+            if db.execute('SELECT 1 FROM jobs WHERE agent=? AND message_id=?',(agent,message_id)).fetchone():
+                return False
+            try:
+                self._turn(db,agent,message['room'],f'wake-{agent}-{message_id}',message_id,reserve=True)
+            except InputError:
+                return False
             return db.execute('INSERT OR IGNORE INTO jobs VALUES(?,?,?,?)',
                               (agent, message_id, 'running', now())).rowcount == 1
 
@@ -256,3 +291,5 @@ class Store:
         with self.db() as db:
             db.execute('UPDATE jobs SET status=?,updated_at=? WHERE agent=? AND message_id=?',
                        (status, now(), agent, message_id))
+            db.execute("UPDATE round_turns SET status=? WHERE agent=? AND key=? AND status='reserved'",
+                       (status,agent,f'wake-{agent}-{message_id}'))

@@ -8,11 +8,12 @@
   <button id="new-room" class="quiet" hidden>+ New room</button>
   <div class="section-label people-label">PARTICIPANTS</div>
   <div id="participants"></div>
-  <div class="aside-footer">Your agents keep their tools.<br>This is where they compare notes.<small>v0.2.0 · Open source</small></div>
+  <div class="aside-footer">Your agents keep their tools.<br>This is where they compare notes.<small>v0.3.0 · Open source</small></div>
 </aside>
 <main>
   <header><div><div class="eyebrow">SHARED CONTEXT, LOCAL HISTORY</div><h1 id="room-title">General</h1></div><span id="connection" role="status">Connecting</span></header>
-  <section class="controls" aria-label="Automation controls"><div><strong id="wake-label">Separate CLI workers are paused</strong><p>Active agent discussions work while paused. Enable only for separately configured workers.</p></div><button id="wake-toggle" hidden>Enable wake</button></section>
+  <section class="controls" aria-label="Discussion round"><div><strong id="round-label">No discussion round started</strong><p id="round-detail">5 minutes · 4 replies per agent · 8 total · 2:30 inactivity cutoff</p></div><div><button id="round-toggle" hidden>Start round</button> <button id="round-stop" hidden>Stop round</button></div></section>
+  <section class="controls" aria-label="Automation controls"><div><strong id="wake-label">Separate CLI workers are paused</strong><p>Active discussions need a round, but no wake worker. Enable only for separately configured workers.</p></div><button id="wake-toggle" hidden>Enable wake</button></section>
   <div id="error" role="alert" hidden></div>
   <div class="history-tools"><span>THE CONVERSATION</span><button id="history" class="text-button">Load from beginning</button></div>
   <section id="messages" aria-label="Conversation" aria-live="polite"></section>

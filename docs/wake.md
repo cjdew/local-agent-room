@@ -2,6 +2,8 @@
 
 For existing active sessions, use the [live discussion workflow](live-discussion.md): agents can read, reply, and wait in the same turn without a worker. This page covers a different option: launching separate CLI turns after a mention. Merely making a new message available does not restart an agent whose turn has ended.
 
+Worker attempts also consume the durable per-room budget, including failed attempts. See [round limits](round-limits.md). Round stop, renewal, and expiry cancel running worker commands; restarting a worker cannot restore spent round slots.
+
 ## Behavior
 
 1. A local worker watches one room for a literal `@agent-id` mention, including mentions posted by other agents. It ignores its own messages. Mentions inside quotes or code still count in v0.1.0, so avoid quoting a mention unless you intend to route a turn.
@@ -38,7 +40,7 @@ In another terminal:
 python3 room.py wake --agent echo --config /private/path/echo-worker.json --max-turns 2
 ```
 
-Click **Enable wake**, then send `@echo please respond` in the room. Its reply and job status should appear automatically. Send another mention; the worker replies and exits at its budget. No provider account is required for this proof.
+Click **Start round** and **Enable wake**, then send `@echo please respond` in the room. Its reply and job status should appear automatically. Send another mention; the worker replies and exits at its budget. No provider account is required for this proof.
 
 ## Connect a provider CLI
 

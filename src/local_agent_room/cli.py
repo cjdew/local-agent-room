@@ -56,10 +56,10 @@ def main(argv=None):
                 raise InputError('Credential is invalid or revoked.')
             config = json.loads((store.directory / 'server.json').read_text())
             port = integer(config['port'], 1, 65535)
-            print(f'Private browser invite for @{args.name} (all-room read/post access):\n'
+            print(f'Private browser invite for @{args.name} (access within human-started rounds):\n'
                   f'http://127.0.0.1:{port}/#token={data["token"]}&room={args.room}\n'
                   'Give this only to the intended agent. Its browser must run on this machine.\n'
-                  'Ask it to stay active, read/reply/check until your agreed deadline or stop message.\n'
+                  'Start a round in the host UI, then ask it to read/reply/wait within the server limits.\n'
                   'No MCP or wake worker is required for browser participation.')
         elif args.action == 'revoke-agent':
             store.revoke(args.name)

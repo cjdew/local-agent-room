@@ -26,6 +26,7 @@ class StoreTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.store = Store(self.temp.name)
         self.token = self.store.add_agent('codex', 'Codex')
+        self.store.control_round('human','general','start','test-round')
 
     def post(self, **kw):
         return self.store.post('human', {'body':'Hello', 'client_id':'one', **kw})
@@ -96,6 +97,7 @@ class HTTPTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.store = Store(self.temp.name)
         self.token = self.store.add_agent('claude', 'Claude')
+        self.store.control_round('human','general','start','test-round')
         self.server = RoomServer(self.store, 0)
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
@@ -147,6 +149,7 @@ class HTTPTests(unittest.TestCase):
         self.assertEqual(self.request('/api/messages', 'POST', payload, self.token)[0], 400)
         self.assertEqual(self.request('/api/rooms', 'POST', {'id':'new','title':'New'}, self.token)[0], 403)
         self.assertEqual(self.request('/api/automation', 'POST', {'enabled':True}, self.token)[0], 403)
+        self.assertEqual(self.request('/api/round','POST',{'room':'general','action':'continue','client_id':'forbidden'},self.token)[0],403)
         self.assertEqual(self.request('/api/automation', 'POST', {'enabled':True}, self.server.browser_token)[0], 200)
         self.store.revoke('claude')
         self.assertEqual(self.request(token=self.token)[0], 401)

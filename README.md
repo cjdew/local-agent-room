@@ -2,7 +2,7 @@
 
 A local web chat where you and your coding agents can compare notes. Keep Claude Code, Codex, and other MCP clients in their own terminals. Give each one access to the same conversation through a small stdio MCP bridge.
 
-**Status: v0.2.0 alpha.** Working local chat, agent browser invites, and MCP tools for active sessions to read, reply, and wait. Automated tests exercise two continuing MCP connections exchanging messages with wake workers disabled. Real model sessions still need a smoke test on your machine; the application cannot force an agent runtime to keep its turn active.
+**Status: v0.3.0 alpha.** Local chat, browser invites, MCP read/reply/wait tools, and server-enforced discussion rounds. Automated tests exercise continuing peer connections, budgets, loop protection, and bounded context. Real model sessions still need a smoke test on your machine; the application cannot force an agent runtime to keep its turn active or enforce its provider spending.
 
 ## What it does
 
@@ -12,6 +12,7 @@ A local web chat where you and your coding agents can compare notes. Keep Claude
 - A local browser UI with no CDN, telemetry, or external assets.
 - Optional `@agent` wake workers: run a locally configured command, pass context on stdin, and post its stdout as that agent's reply.
 - Human-controlled pause, per-worker turn budgets, timeouts, and durable job records.
+- Human-started rounds: 5 minutes, 4 turns per agent, 8 total, a 150-second inactivity limit, 4,000-character agent messages, and bounded incremental context. See [round limits](docs/round-limits.md).
 
 There is no hosted chat service and no model API key in this app. Your chosen agent CLI still connects to its provider and may send room content and code there. Local history does not mean local model inference.
 
@@ -29,6 +30,8 @@ python3 room.py serve
 
 Open the private browser link printed by the server. Keep that terminal running. The default address is `127.0.0.1:8765`; use `serve --port 8877` if needed. The link's token gives human control of the room; don't share it.
 
+Click **Start round** in the host browser before agents participate. An ended round requires your explicit **Continue round** action. Coding and tool permissions remain in your existing agent settings.
+
 Runtime state goes in `~/.local-agent-room`, outside the source checkout. A different state directory goes **before** the command:
 
 ```sh
@@ -41,7 +44,7 @@ Optional package installation: `python3 -m pip install .` provides the `local-ag
 
 ## Discuss in your current agent sessions
 
-**No wake worker is needed while your agents remain active.** Give each agent a discussion task with a time/reply budget. It reads the room, responds, waits for the other participant, and repeats in the same turn. Browser agents can repeatedly observe the page; MCP agents can use `room_wait` to avoid repeated immediate reads.
+**No wake worker is needed while your agents remain active.** Start a round, then give each agent a discussion task within the enforced budget. It reads the room, responds, waits for the other participant, and repeats in the same turn. Browser agents can observe the page; MCP agents can use `room_wait`. Agents must finish their turn when the server ends the round.
 
 For agents with local browser access, start the server, then print one private link per identity:
 
@@ -95,7 +98,7 @@ For a reusable collaboration prompt and version discipline, see [docs/agent-work
 
 Active sessions can already exchange replies through a read/reply/wait loop. Separately, the optional worker can watch for `@codex`, invoke a configured local CLI, post its response, and trigger `@claude` if that response requests Claude's turn.
 
-**Workers launch separate command turns; they do not type into or wake an existing interactive terminal session.** They are not required for the active-session workflow. Native session resumption and live terminal steering require provider-specific adapters and are not implemented in v0.2.0. Do not have a worker and an interactive process simultaneously write the same native session.
+**Workers launch separate command turns; they do not type into or wake an existing interactive terminal session.** They are not required for the active-session workflow. Native session resumption and live terminal steering require provider-specific adapters and are not implemented in v0.3.0. Do not have a worker and an interactive process simultaneously write the same native session.
 
 See [docs/wake.md](docs/wake.md) for a runnable, no-model smoke test and provider command examples. Wake is paused at server startup. Starting a worker alone does not enable execution.
 
@@ -122,7 +125,7 @@ Stop the server and workers before backing up the state directory; copy the whol
 
 The server binds to IPv4 loopback, validates Host and Origin, requires bearer credentials for data access, rejects cross-origin browser requests, and renders chat as plain text. Agent tokens are hashed in SQLite; their credential files remain sensitive. Browser tokens rotate on restart. POSIX state permissions are restricted. See [SECURITY.md](SECURITY.md) for the threat model and limitations.
 
-Do not expose the port through a tunnel, reverse proxy, shared container port, or LAN binding. All registered agents can read all rooms. Mentions route work; they are not access controls. This is a single-user local application, not a hardened multi-user service.
+Do not expose the port through a tunnel, reverse proxy, shared container port, or LAN binding. Agent identities have no per-room privacy boundary; active rounds gate their bounded context access. Mentions route work; they are not access controls. This is a single-user local application, not a hardened multi-user service.
 
 ## Roadmap
 

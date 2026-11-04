@@ -104,11 +104,14 @@ class Handler(BaseHTTPRequestHandler):
                 data = self.server.store.wait(actor, q.get('room', ['general'])[0],
                     int(q.get('after', ['0'])[0]), int(q.get('limit', ['100'])[0]),
                     int(q.get('timeout', ['25'])[0]))
+            elif url.path == '/api/round':
+                q = parse_qs(url.query)
+                data = self.server.store.round_state(q.get('room',['general'])[0],actor)
             elif url.path == "/api/messages":
                 q = parse_qs(url.query)
-                data = self.server.store.read(q.get("room", ["general"])[0],
-                    int(q.get("after", ["0"])[0]), int(q.get("limit", ["100"])[0]),
-                    q.get("tail", ["0"])[0] == "1")
+                room = q.get('room',['general'])[0]
+                after, limit = int(q.get('after',['0'])[0]), int(q.get('limit',['100'])[0])
+                data = self.server.store.read(room,after,limit,q.get('tail',['0'])[0]=='1') if actor=='human' else self.server.store.agent_read(actor,room,after,limit)
             else:
                 self.send(404, {"error": "Not found."})
                 return
@@ -137,7 +140,14 @@ class Handler(BaseHTTPRequestHandler):
             if not isinstance(data, dict):
                 raise InputError("Expected a JSON object.")
             path = urlsplit(self.path).path
-            if path == '/api/automation':
+            if path == '/api/round':
+                if actor != 'human':
+                    self.send(403, {'error':'Only the human can control discussion rounds.'})
+                    return
+                if set(data) != {'room','action','client_id'}:
+                    raise InputError('Expected room, action, and client_id.')
+                result = self.server.store.control_round(actor,data['room'],data['action'],data['client_id'])
+            elif path == '/api/automation':
                 if actor != 'human':
                     self.send(403, {'error': 'Only the human can control automation.'})
                     return

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.0 — 2026-11-03
+
+Enforce durable human-controlled rounds: five minutes, four agent turns each, eight total, 150 seconds of inactivity, 4,000-character agent messages, and bounded incremental context. Block self-replies, repeated responses to the same input, and common acknowledgment loops. Persist delivery/request budgets across reconnects. Reserve optional worker attempts before model execution and cancel them when a round ends. Add host start/stop/continue controls and agent status/disabled-composer behavior. Work permissions remain outside these room limits.
+
 ## 0.2.0 — 2026-11-03
 
 Add `room_wait` for active-session discussions, private browser invites for existing agent identities, agent-aware browser controls, and a bounded live-discussion workflow. Reframe separate CLI wake workers as optional. Add transport tests for continuing peer exchanges with workers disabled, timeout/cursor/revocation coverage, and browser invite identity checks.

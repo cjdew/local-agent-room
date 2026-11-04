@@ -9,6 +9,7 @@ if (fragment.has('token')) {
   history.replaceState(null, '', location.pathname);
 }
 let room = 'general', cursor = 0, generation = 0, polling = false, loading = false, enabled = false, retry = null;
+let isAgent = false, canPost = true, sending = false, agentRound, roundState = null;
 const seen = new Set();
 function error(message) { $('error').textContent = message; $('error').hidden = !message; }
 function el(tag, text, className) { const node = document.createElement(tag); if (text != null) node.textContent = text; if (className) node.className = className; return node; }
@@ -45,13 +46,19 @@ function renderMessages(messages, reset = false) {
   }
   if (!seen.size) {
     const empty = el('div', null, 'empty');
-    empty.append(el('h2', 'Bring your agents to the table.'), el('p', 'Invite an agent and ask it to stay in the discussion.\nActive sessions can read, reply, and wait here without wake workers.'));
+    empty.append(el('h2', 'Bring your agents to the table.'), el('p', 'Start a discussion round and invite your agents.\nActive sessions can read, reply, and wait here without wake workers.'));
     $('messages').replaceChildren(empty);
+  }
+  if (isAgent) {
+    let items = [...$('messages').querySelectorAll('article')];
+    const oversized = () => items.length > 20 || items.reduce((n,e) => n + e.querySelector('.message-body').textContent.length,0) > 16000 || new TextEncoder().encode(items.map(e=>e.textContent).join('')).length > 60000;
+    while (items.length && oversized()) items.shift().remove();
   }
   if (reset || nearBottom) $('messages').scrollTop = $('messages').scrollHeight;
 }
 async function selectRoom(id, title, fromBeginning = false) {
   const version = ++generation; room = id; cursor = 0; retry = null;
+  agentRound = undefined;
   loading = true;
   $('room-title').textContent = title; $('reply').value = ''; $('body').value = ''; $('revision').value = '';
   renderMessages([], true);
@@ -68,10 +75,25 @@ async function poll() {
   polling = true;
   const version = generation;
   try {
-    const [rooms, people, state, me, page] = await Promise.all([
-      api('rooms'), api('participants'), api('automation'), api('me'),
+    const [rooms, people, state, me, round, page] = await Promise.all([
+      api('rooms'), api('participants'), api('automation'), api('me'), api('round?room='+encodeURIComponent(room)),
       api('messages?room=' + encodeURIComponent(room) + '&after=' + cursor + '&limit=100')]);
     if (version !== generation) return;
+    isAgent = me.role !== 'human';
+    roundState = round;
+    canPost = !isAgent || round.active;
+    $('send').disabled = sending || !canPost;
+    $('body').disabled = !canPost;
+    $('body').maxLength = isAgent ? 4000 : 12000;
+    $('history').hidden = isAgent;
+    $('round-toggle').hidden = isAgent || round.active;
+    $('round-toggle').textContent = round.id ? 'Continue round' : 'Start round';
+    $('round-stop').hidden = isAgent || !round.id || round.reason === 'stopped';
+    $('round-label').textContent = round.active ? 'Discussion round active' : 'Round ended · ' + round.reason.replaceAll('_',' ');
+    const seconds = round.deadline ? Math.max(0,Math.ceil((Math.min(round.deadline,round.idle_deadline)*1000-Date.now())/1000)) : 0;
+    $('round-detail').textContent = `${round.used}/8 turns used · 4 per agent · ${round.active ? seconds+'s until next cutoff' : 'Human must start or continue'} · 2:30 inactivity limit`;
+    if (isAgent && agentRound !== undefined && agentRound !== round.id) renderMessages([],true);
+    agentRound = round.id;
     $('new-room').hidden = me.role !== 'human';
     $('wake-toggle').hidden = me.role !== 'human';
     $('identity').textContent = me.role === 'human' ? 'Posting as you · room host' : 'Posting as @' + me.id;
@@ -97,6 +119,10 @@ async function poll() {
     for (const job of state.jobs) $('jobs').append(el('div', '@' + job.agent + ' · message #' + job.message_id + ' · ' + job.status, 'job'));
     if (!state.jobs.length) $('jobs').textContent = 'No runs yet. Start a worker in a terminal, then enable wake here.';
     renderMessages(page.messages); cursor = page.next_cursor;
+    if (isAgent && !round.active) {
+      $('messages').replaceChildren(el('p',round.instruction,'empty'));
+      seen.clear();
+    }
     $('connection').textContent = '● Connected locally';
   } catch (e) { $('connection').textContent = 'Disconnected'; error(e.message); }
   finally { polling = false; }
@@ -106,7 +132,7 @@ $('login-form').onsubmit = event => {
   $('token').value = ''; $('login').close(); error(''); poll();
 };
 $('composer').onsubmit = async event => {
-  event.preventDefault(); $('send').disabled = true; error('');
+  event.preventDefault(); if (!canPost || sending) return; sending = true; $('send').disabled = true; error('');
   const targetRoom = room;
   const payload = {room, body: $('body').value, revision: $('revision').value.trim()};
   if ($('reply').value) payload.reply_to = Number($('reply').value);
@@ -120,7 +146,7 @@ $('composer').onsubmit = async event => {
     }
     await poll();
   } catch (e) { error(e.message); }
-  finally { $('send').disabled = false; }
+  finally { sending = false; $('send').disabled = !canPost; }
 };
 $('body').onkeydown = e => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && !$('send').disabled) { e.preventDefault(); $('composer').requestSubmit(); } };
 $('history').onclick = () => selectRoom(room, $('room-title').textContent, true).catch(e => error(e.message));
@@ -135,6 +161,17 @@ $('wake-toggle').onclick = async () => {
   try { await api('automation', {enabled:!enabled}); await poll(); error(''); }
   catch(e) { error(e.message); }
 };
+let roundRequest = null;
+async function controlRound(action) {
+  const signature = room+':'+action+':'+(roundState?.id || 0);
+  if (!roundRequest || roundRequest.signature !== signature) roundRequest = {signature,id:crypto.randomUUID()};
+  $('round-toggle').disabled = true; $('round-stop').disabled = true;
+  try { await api('round',{room,action,client_id:roundRequest.id}); await poll(); error(''); roundRequest = null; }
+  catch(e) { error(e.message); }
+  finally { $('round-toggle').disabled = false; $('round-stop').disabled = false; }
+}
+$('round-toggle').onclick = () => controlRound(roundState?.id ? 'continue' : 'start');
+$('round-stop').onclick = () => controlRound('stop');
 if (!token) $('login').showModal();
 else selectRoom(initialRoom, initialRoom === 'general' ? 'General' : initialRoom).then(poll).catch(e => error(e.message));
 setInterval(poll, 1500);
